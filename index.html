@@ -111,8 +111,8 @@ h1.cook-name{font-size:22px;margin:14px 0 2px}
 .btn{display:block;width:100%;padding:13px;border-radius:12px;border:none;background:var(--pri);color:#fff;font-size:15px;cursor:pointer}
 .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
 .btn+.btn{margin-top:8px}
-#modalMask,#linkMask,#photoPickMask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center}
-#modal,#linkModal,#photoPickModal{width:100%;max-width:640px;background:#fff;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+#modalMask,#linkMask,#photoPickMask,#importPasteMask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+#modal,#linkModal,#photoPickModal,#importPasteModal{width:100%;max-width:640px;background:#fff;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
 #modal h3,#linkModal h3,#photoPickModal h3{margin:0 0 6px;font-size:17px}
 #photoPickGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:52vh;overflow:auto;margin:10px 0}
 button.pick-thumb{width:100%;padding:0;border:none;border-radius:10px;overflow:hidden;background:#f3ede4;display:flex;flex-direction:column}
@@ -123,6 +123,7 @@ button.pick-thumb:active{outline:3px solid #e0522d}
 .prep-photo{max-width:220px;border-radius:12px;overflow:hidden;margin:0 0 8px}
 .prep-photo img{width:100%;display:block}
 #pasteText{width:100%;height:170px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;font-family:inherit;resize:none;margin-top:8px}
+#importPasteArea{width:100%;height:150px;padding:10px;border:1px solid var(--line);border-radius:12px;font-size:14px;font-family:inherit;resize:none;margin-top:8px}
 .modal-btns{display:flex;gap:10px;margin-top:12px}
 .modal-btns .btn{flex:1}
 #toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(10px);background:rgba(45,42,38,.92);color:#fff;padding:10px 18px;border-radius:22px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:50;max-width:86vw;text-align:center}
@@ -238,6 +239,7 @@ button.pick-thumb:active{outline:3px solid #e0522d}
       <button class="btn" id="exportBtn">⬇️ 下载备份文件</button>
       <button class="btn ghost" id="copyBtn">📋 复制备份文本</button>
       <button class="btn ghost" id="importBtn">⬆️ 导入备份文件</button>
+      <button class="btn ghost" id="importPasteBtn">📥 粘贴导入（手机搬菜谱用）</button>
       <input type="file" id="importFile" accept=".json,application/json" hidden>
     </div>
     <div class="set-card">
@@ -283,6 +285,17 @@ button.pick-thumb:active{outline:3px solid #e0522d}
     <div class="modal-btns">
       <button class="btn" id="photoPickLocal">📁 本地选照片</button>
       <button class="btn ghost" id="photoPickClose">取消</button>
+    </div>
+  </div>
+</div>
+<div id="importPasteMask" hidden>
+  <div id="importPasteModal">
+    <h3>📥 粘贴备份文字导入</h3>
+    <p class="hint" style="margin:0">在微信里长按那段备份文字点「复制」，回来粘到这里</p>
+    <textarea id="importPasteArea" placeholder="粘贴备份文字…"></textarea>
+    <div class="modal-btns">
+      <button class="btn" id="importPasteRun">导入</button>
+      <button class="btn ghost" id="importPasteClose">取消</button>
     </div>
   </div>
 </div>
@@ -1148,22 +1161,39 @@ async function doCopy(){
     ta.remove();
   }
 }
-async function doImport(e){
-  const f=e.target.files&&e.target.files[0];
-  e.target.value='';
-  if(!f)return;
+function importBackupText(text){
   try{
-    const text=await f.text();
     const data=JSON.parse(text);
     const incoming=Array.isArray(data)?data:(data.recipes||[]);
     if(!Array.isArray(incoming)||!incoming.length)throw new Error('empty');
     const map=new Map(recipes.map(r=>[r.id,r]));
     incoming.forEach(r=>{if(r&&r.id&&Array.isArray(r.ingredients)&&Array.isArray(r.steps))map.set(r.id,r);});
     recipes=Array.from(map.values());
-    await saveRecipes(recipes);
+    saveRecipes(recipes);
     renderHome();
     toast(`已导入 ${incoming.length} 条备份`);
-  }catch(err){toast('导入失败：文件格式不对');}
+    return true;
+  }catch(err){return false;}
+}
+async function doImport(e){
+  const f=e.target.files&&e.target.files[0];
+  e.target.value='';
+  if(!f)return;
+  const text=await f.text();
+  if(!importBackupText(text))toast('导入失败：文件格式不对');
+}
+/* 手机上搬菜谱：先试直接读剪贴板里的备份文字，读不到就弹框手粘 */
+async function doImportPaste(){
+  let text='';
+  try{text=await navigator.clipboard.readText();}catch(e){}
+  if(text&&importBackupText(text))return;
+  $('#importPasteArea').value='';
+  $('#importPasteMask').hidden=false;
+  setTimeout(()=>$('#importPasteArea').focus(),60);
+}
+function doImportPasteRun(){
+  if(importBackupText($('#importPasteArea').value.trim()))$('#importPasteMask').hidden=true;
+  else toast('导入失败：粘贴的内容不是备份文字');
 }
 let wipeArmed=false, wipeTimer=null;
 function doWipe(){
@@ -1225,6 +1255,10 @@ function bindEvents(){
   $('#copyBtn').addEventListener('click',doCopy);
   $('#importBtn').addEventListener('click',()=>$('#importFile').click());
   $('#importFile').addEventListener('change',doImport);
+  $('#importPasteBtn').addEventListener('click',doImportPaste);
+  $('#importPasteRun').addEventListener('click',doImportPasteRun);
+  $('#importPasteClose').addEventListener('click',()=>{$('#importPasteMask').hidden=true;});
+  $('#importPasteMask').addEventListener('click',e=>{if(e.target.id==='importPasteMask')$('#importPasteMask').hidden=true;});
   $('#wipeBtn').addEventListener('click',doWipe);
   $('#pasteRun').addEventListener('click',runPaste);
   $('#pasteClose').addEventListener('click',()=>{$('#modalMask').hidden=true;});
