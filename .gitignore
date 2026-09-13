@@ -1,0 +1,9 @@
+# 开发工具和本地小助手不上传，只发布 App 本体（index.html / manifest.json / sw.js / 图标）
+node_modules/
+work/
+test.js
+serve.js
+check-syntax.js
+make-icons.js
+package.json
+package-lock.json
