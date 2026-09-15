@@ -331,6 +331,7 @@ button.pick-thumb:active{outline:3px solid #e0522d}
     <input id="libSearch" type="search" placeholder="搜菜名或食材，比如：可乐鸡翅、豆腐…">
     <div id="libList"></div>
     <div class="modal-btns">
+      <button class="btn" id="libAllBtn" style="background:#d64545">📥 全部导入（先清空现有的）</button>
       <button class="btn ghost" id="libClose">关闭</button>
     </div>
   </div>
@@ -1283,16 +1284,46 @@ function renderLib(q){
       <span class="lib-ing">${esc(r.i.slice(0,5).map(p=>p[0]).join('、'))}${r.i.length>5?'…':''}</span>
     </button>`).join(''):'<div class="empty small">没找到，换个词试试</div>';
 }
-function importLibItem(r){
-  const rec={id:uid(),name:r.n,category:r.c,servings:r.v||2,photo:null,source:'HowToCook 开源菜谱库',
+function libToRecipe(r){
+  return {id:uid(),name:r.n,category:r.c,servings:r.v||2,photo:null,source:'HowToCook 开源菜谱库',
     ingredients:r.i.map(p=>({name:p[0],amount:p[1]||''})),
     steps:r.s.slice(),stepPhotos:[],createdAt:Date.now(),updatedAt:Date.now()};
+}
+function importLibItem(r){
+  const exist=recipes.find(x=>(x.name||'').trim()===r.n);
+  if(exist){
+    $('#libMask').hidden=true;
+    openEdit(exist.id);
+    toast('已有「'+r.n+'」，直接打开它');
+    return;
+  }
+  const rec=libToRecipe(r);
   recipes.unshift(rec);
   saveRecipes(recipes);
   renderHome();
   $('#libMask').hidden=true;
   openEdit(rec.id);
   toast('已导入「'+r.n+'」，正在打开，改一改就能用');
+}
+/* 全部导入：清空现有的（先备份！），整库 359 道一次性录入；防误点要连点两次 */
+let libAllArmed=false, libAllTimer=null;
+function importAllLib(){
+  if(!libAllArmed){
+    libAllArmed=true;
+    $('#libAllBtn').textContent='⚠️ 再点一次：清空现有的，导入全部 '+RECIPE_LIB.length+' 道';
+    clearTimeout(libAllTimer);
+    libAllTimer=setTimeout(()=>{libAllArmed=false;$('#libAllBtn').textContent='📥 全部导入（先清空现有的）';},4000);
+    return;
+  }
+  clearTimeout(libAllTimer);
+  libAllArmed=false;
+  recipes=RECIPE_LIB.map(libToRecipe);
+  saveRecipes(recipes);
+  renderHome();
+  $('#libMask').hidden=true;
+  show('home');
+  $('#libAllBtn').textContent='📥 全部导入（先清空现有的）';
+  toast('已清空旧的，导入 '+recipes.length+' 道现成菜谱');
 }
 /* 传到手机：备份临时存到电脑小助手（5分钟过期）→ 二维码里是下载网址，手机同一WiFi扫一下就把备份文件下载到手机 */
 function drawQr(url){
@@ -1395,6 +1426,7 @@ function bindEvents(){
     catch(e){toast('复制不了：长按网址手动复制');}
   });
   $('#libBtn').addEventListener('click',openLib);
+  $('#libAllBtn').addEventListener('click',importAllLib);
   $('#libClose').addEventListener('click',()=>{$('#libMask').hidden=true;});
   $('#libMask').addEventListener('click',e=>{if(e.target.id==='libMask')$('#libMask').hidden=true;});
   $('#libSearch').addEventListener('input',e=>renderLib(e.target.value));
